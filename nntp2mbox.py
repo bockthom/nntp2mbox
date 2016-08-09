@@ -19,15 +19,16 @@ import sys
 import time
 
 
-def download(group, aggressive, dry_run, start=None):
+def download(group, aggressive, dry_run, number=None, start=None):
     """
     The default behavior is to pause 30 seconds every 1000 messages while
     downloading to reduce the load on the load on the gmane servers.
     This can be skipped by supplying the aggressive flag.
     """
 
-    mbox = mailbox.mbox(group + '.mbox')
-    mbox.lock()
+    if not dry_run:
+        mbox = mailbox.mbox(group + '.mbox')
+        mbox.lock()
 
     nntpconn = nntplib.NNTP('news.gmane.org')
 
@@ -39,19 +40,22 @@ def download(group, aggressive, dry_run, start=None):
     last = int(last)
 
     if start:
-        startnr = start
+        startnr = max(first, start)
+        startnr = min(startnr, last)
 
-        if startnr < first:
-            startnr = first
-
-        if startnr > last:
-            startnr = last
+        if number:
+            last = min(startnr + number, last)
 
     else:
         startnr = first
 
+        if number:
+            startnr = max(startnr, last - number)
+
     if not start:
         print('No start message provided, starting at %d' % startnr)
+
+    print("Downloading messages %d to %d." % (startnr, last))
 
     for msgno in range(startnr, last):
         try:
@@ -61,7 +65,7 @@ def download(group, aggressive, dry_run, start=None):
 
             if dry_run:
                 print('Dry-run: download message no. %d' % msgno)
-                pass
+                continue
 
             resp, info = nntpconn.article(str(msgno))
 
@@ -77,8 +81,9 @@ def download(group, aggressive, dry_run, start=None):
             print(sys.exc_info()[0])
             pass
 
-    mbox.flush()
-    mbox.unlock()
+    if not dry_run:
+        mbox.flush()
+        mbox.unlock()
 
 
 if __name__ == "__main__":
@@ -87,10 +92,14 @@ if __name__ == "__main__":
                         "--aggressive",
                         help="Disable waiting during a download",
                         action="store_true")
-    parser.add_argument("-n",
+    parser.add_argument("-d",
                         "--dry-run",
                         help="perform a trial run with no changes made",
                         action="store_true")
+    parser.add_argument("-n",
+                        "--number",
+                        help="Fetch the n most recent messages",
+                        type=int)
     parser.add_argument("-s",
                         "--start",
                         help="First message in range",
@@ -99,4 +108,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     for group in args.groups:
-        download(group, args.aggressive, args.dry_run, args.start)
+        download(group, args.aggressive, args.dry_run, args.number, args.start)
