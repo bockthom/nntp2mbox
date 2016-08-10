@@ -87,6 +87,8 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
 
     global status
 
+    attempts = 30  # number of attempts in case of temporary error
+
     if not dry_run:
         mbox = mailbox.mbox(group + '.mbox')
         mbox.lock()
@@ -130,7 +132,18 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
 
             status = str(int(100 *
                              (1 + msgno - startnr) / (last - startnr))) + ' %'
-            store(mbox, nntpconn, msgno, update)
+
+            for attempt in range(attempts):
+                try:
+                    store(mbox, nntpconn, msgno, update)
+                except nntplib.NNTPTemporaryError:
+                    time.sleep(5)
+                    pass
+                else:
+                    break
+            else:
+                print('Failed to download msg nr %d after %d attempts' %
+                      (msgno, attempts))
 
         except:
             print(sys.exc_info()[0])
