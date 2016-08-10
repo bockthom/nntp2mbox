@@ -137,13 +137,15 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
                 try:
                     store(mbox, nntpconn, msgno, update)
                 except nntplib.NNTPTemporaryError:
+                    print('%d: Temporary error. Sleep 5 seconds and retry.' %
+                          msgno)
                     time.sleep(5)
                     pass
                 else:
                     break
             else:
-                print('Failed to download msg nr %d after %d attempts' %
-                      (msgno, attempts))
+                print('%d: Failed to download after %d attempts' % (msgno,
+                                                                    attempts))
 
         except:
             print(sys.exc_info()[0])
