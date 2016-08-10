@@ -27,6 +27,16 @@ def log(target, action, number, msgno, msgid):
                                               msgno, msgid))
 
 
+def list_groups():
+    nntpconn = nntplib.NNTP('news.gmane.org')
+    resp, lists = nntpconn.list()
+
+    for group, last, first, flag in lists:
+        print(group)
+
+    nntpconn.quit()
+
+
 def contains(mbox, msgid):
     for m in mbox.itervalues():
         if m.get('Message-Id') == msgid:
@@ -130,6 +140,8 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
         mbox.flush()
         mbox.unlock()
 
+    nntpconn.quit()
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -145,6 +157,10 @@ def main():
                         "--number",
                         help="Fetch the n most recent messages",
                         type=int)
+    parser.add_argument("-l",
+                        "--list-groups",
+                        help="list all available groups and exit",
+                        action="store_true")
     parser.add_argument("-s",
                         "--start",
                         help="First message in range",
@@ -153,8 +169,12 @@ def main():
                         "--update",
                         help="retrieve only new messages",
                         action="store_true")
-    parser.add_argument("groups", default="[]", nargs="+")
+    parser.add_argument("groups", default="[]", nargs="*")
     args = parser.parse_args()
+
+    if args.list_groups:
+        list_groups()
+        return
 
     for group in args.groups:
         download(group,
