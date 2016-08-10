@@ -19,11 +19,58 @@ import sys
 import time
 
 
-def download(group, aggressive, dry_run, number=None, start=None):
+def log(action, number, msgno, msgid):
+    print('%s %d(%s): %s' % (action, number, msgno, msgid))
+
+
+def contains(mbox, msgid):
+    for m in mbox.itervalues():
+        if m.get('Message-Id') == msgid:
+            return True
+    return False
+
+
+def stat(nntpconn, msgno):
+    action = 'nntp [ STAT  ]'
+    resp, number, msgid = nntpconn.stat(str(msgno))
+    log(action, number, msgno, msgid)
+    return number, msgid
+
+
+def get(nntpconn, msgno):
+    action = 'nntp [ GET   ]'
+    resp, info = nntpconn.article(str(msgno))
+
+    text = str()
+    for line in info.lines:
+        text += line.decode(encoding='UTF-8') + "\n"
+
+    log(action, info.number, msgno, info.message_id)
+    return(info.number, info.message_id, email.message_from_string(text))
+
+
+def store(mbox, nntpconn, msgno, update):
+    if update:
+        number, msgid = stat(nntpconn, msgno)
+
+    if not update or not contains(mbox, msgid):
+        number, msgid, msg = get(nntpconn, msgno)
+        mbox.add(msg)
+        action = 'mbox [ STORE  ]'
+    else:
+        action = 'mbox [ SKIP  ]'
+
+    log(action, number, msgno, msgid)
+
+
+def download(group, aggressive, dry_run, number=None, start=None, update=None):
     """
     The default behavior is to pause 30 seconds every 1000 messages while
     downloading to reduce the load on the load on the gmane servers.
     This can be skipped by supplying the aggressive flag.
+
+    If the update argument is supplied, only new messages (i.e., msgid not in
+    mbox) will be added to the mbox.
     """
 
     if not dry_run:
@@ -55,7 +102,7 @@ def download(group, aggressive, dry_run, number=None, start=None):
     if not start:
         print('No start message provided, starting at %d' % startnr)
 
-    print("Downloading messages %d to %d." % (startnr, last))
+    print("Retrieving messages %d to %d." % (startnr, last))
 
     for msgno in range(startnr, last):
         try:
@@ -67,16 +114,8 @@ def download(group, aggressive, dry_run, number=None, start=None):
                 print('Dry-run: download message no. %d' % msgno)
                 continue
 
-            resp, info = nntpconn.article(str(msgno))
+            store(mbox, nntpconn, msgno, update)
 
-            text = str()
-            for line in info.lines:
-                text += line.decode(encoding='UTF-8') + "\n"
-
-            msg = email.message_from_string(text)
-            mbox.add(msg)
-
-            print('%d(%s): %s' % (info.number, msgno, info.message_id))
         except:
             print(sys.exc_info()[0])
             pass
@@ -104,8 +143,17 @@ if __name__ == "__main__":
                         "--start",
                         help="First message in range",
                         type=int)
+    parser.add_argument("-u",
+                        "--update",
+                        help="retrieve only new messages",
+                        action="store_true")
     parser.add_argument("groups", default="[]", nargs="+")
     args = parser.parse_args()
 
     for group in args.groups:
-        download(group, args.aggressive, args.dry_run, args.number, args.start)
+        download(group,
+                 args.aggressive,
+                 args.dry_run,
+                 args.number,
+                 args.start,
+                 args.update)
