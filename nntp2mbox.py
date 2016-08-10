@@ -19,8 +19,12 @@ import sys
 import time
 
 
-def log(action, number, msgno, msgid):
-    print('%s %d(%s): %s' % (action, number, msgno, msgid))
+status = '0 %'
+
+
+def log(target, action, number, msgno, msgid):
+    print('%5s | %-4s | %-5s | %d(%s): %s' % (status, target, action, number,
+                                              msgno, msgid))
 
 
 def contains(mbox, msgid):
@@ -31,21 +35,19 @@ def contains(mbox, msgid):
 
 
 def stat(nntpconn, msgno):
-    action = 'nntp [ STAT  ]'
     resp, number, msgid = nntpconn.stat(str(msgno))
-    log(action, number, msgno, msgid)
+    log('nntp', 'STAT', number, msgno, msgid)
     return number, msgid
 
 
 def get(nntpconn, msgno):
-    action = 'nntp [ GET   ]'
     resp, info = nntpconn.article(str(msgno))
 
     text = str()
     for line in info.lines:
         text += line.decode(encoding='UTF-8') + "\n"
 
-    log(action, info.number, msgno, info.message_id)
+    log('nntp', 'GET', info.number, msgno, info.message_id)
     return(info.number, info.message_id, email.message_from_string(text))
 
 
@@ -56,11 +58,11 @@ def store(mbox, nntpconn, msgno, update):
     if not update or not contains(mbox, msgid):
         number, msgid, msg = get(nntpconn, msgno)
         mbox.add(msg)
-        action = 'mbox [ STORE  ]'
+        action = 'STORE'
     else:
-        action = 'mbox [ SKIP  ]'
+        action = 'SKIP'
 
-    log(action, number, msgno, msgid)
+    log('mbox', action, number, msgno, msgid)
 
 
 def download(group, aggressive, dry_run, number=None, start=None, update=None):
@@ -72,6 +74,8 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     If the update argument is supplied, only new messages (i.e., msgid not in
     mbox) will be added to the mbox.
     """
+
+    global status
 
     if not dry_run:
         mbox = mailbox.mbox(group + '.mbox')
@@ -114,6 +118,8 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
                 print('Dry-run: download message no. %d' % msgno)
                 continue
 
+            status = str(int(100 *
+                             (1 + msgno - startnr) / (last - startnr))) + ' %'
             store(mbox, nntpconn, msgno, update)
 
         except:
@@ -125,7 +131,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
         mbox.unlock()
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-a",
                         "--aggressive",
@@ -157,3 +163,7 @@ if __name__ == "__main__":
                  args.number,
                  args.start,
                  args.update)
+
+
+if __name__ == "__main__":
+    main()
