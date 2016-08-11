@@ -192,12 +192,15 @@ def main():
         return
 
     for group in args.groups:
-        download(group,
-                 args.aggressive,
-                 args.dry_run,
-                 args.number,
-                 args.start,
-                 args.update)
+        try:
+            download(group,
+                     args.aggressive,
+                     args.dry_run,
+                     args.number,
+                     args.start,
+                     args.update)
+        except:
+            pass
 
 
 if __name__ == "__main__":
