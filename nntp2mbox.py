@@ -22,6 +22,7 @@ import traceback
 
 
 status = '0 %'
+attempts = 2  # number of attempts in case of temporary error
 
 
 def log(target, action, number, msgno, msgid):
@@ -45,13 +46,36 @@ def contains(index, msgid):
 
 
 def stat(nntpconn, msgno):
-    resp, number, msgid = nntpconn.stat(str(msgno))
+    for attempt in range(attempts):
+        try:
+            resp, number, msgid = nntpconn.stat(str(msgno))
+        except nntplib.NNTPTemporaryError:
+            print('%d: Temporary error. Sleep 5 seconds and retry.' % msgno)
+            if not aggressive:
+                time.sleep(5)
+            pass
+        else:
+            break
+    else:
+        print('%d: Failed to download after %d attempts' % (msgno, attempts))
+
     log('nntp', 'STAT', number, msgno, msgid)
     return number, msgid
 
 
 def get(nntpconn, msgno):
-    resp, info = nntpconn.article(str(msgno))
+    for attempt in range(attempts):
+        try:
+            resp, info = nntpconn.article(str(msgno))
+        except nntplib.NNTPTemporaryError:
+            print('%d: Temporary error. Sleep 5 seconds and retry.' % msgno)
+            if not aggressive:
+                time.sleep(5)
+            pass
+        else:
+            break
+    else:
+        print('%d: Failed to download after %d attempts' % (msgno, attempts))
 
     text = str()
     for line in info.lines:
@@ -61,18 +85,28 @@ def get(nntpconn, msgno):
     return(info.number, info.message_id, email.message_from_string(text))
 
 
-def store(index, mbox, nntpconn, msgno, update):
+def check(index, mbox, nntpconn, msgno, update):
+
     if update:
-        number, msgid = stat(nntpconn, msgno)
+                number, msgid = stat(nntpconn, msgno)
 
     if not update or not contains(index, msgid):
-        number, msgid, msg = get(nntpconn, msgno)
-        mbox.add(msg)
-        index_msg(index, msg)
-        action = 'STORE'
+        queue = True
+        action = 'QUEUE'
     else:
+        queue = False
         action = 'SKIP'
 
+    log('mbox', action, number, msgno, msgid)
+    return queue
+
+
+def store(index, mbox, nntpconn, msgno):
+    number, msgid, msg = get(nntpconn, msgno)
+    mbox.add(msg)
+    index_msg(index, msg)
+    index.commit()
+    action = 'STORE'
     log('mbox', action, number, msgno, msgid)
 
 
@@ -81,8 +115,6 @@ def index_msg(index, msg):
     date = msg.get('Date')
     sender = msg.get('From')
     subject = msg.get('Subject')
-
-    print("Indexing %s" % msgid)
     index.execute('INSERT INTO messages VALUES(?,?,?,?)', (msgid, date, sender,
                                                            subject))
 
@@ -112,8 +144,6 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     """
 
     global status
-
-    attempts = 30  # number of attempts in case of temporary error
 
     if not dry_run:
         mbox = mailbox.mbox(group + '.mbox')
@@ -150,9 +180,12 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     if not start:
         print('No start message provided, starting at %d' % startnr)
 
-    print("Retrieving messages %d to %d." % (startnr, last))
+    print("Checking messages %d to %d." % (startnr, last))
 
-    for msgno in range(startnr, last):
+    stack = []
+
+    # Check which messages need to be retrieved
+    for msgno in reversed(range(startnr, last + 1)):
         try:
             if not aggressive and (msgno % 1000 == 0) and (msgno != startnr):
                 print('%d: Sleep 30 seconds' % msgno)
@@ -162,23 +195,31 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
                 print('Dry-run: download message no. %d' % msgno)
                 continue
 
-            status = str(int(100 *
-                             (1 + msgno - startnr) / (last - startnr))) + ' %'
+            status = str(int(100 * (last - msgno) / (last - startnr))) + ' %'
 
-            for attempt in range(attempts):
-                try:
-                    store(index, mbox, nntpconn, msgno, update)
-                except nntplib.NNTPTemporaryError:
-                    print('%d: Temporary error. Sleep 5 seconds and retry.' %
-                          msgno)
-                    time.sleep(5)
-                    pass
-                else:
-                    break
+            if check(index, mbox, nntpconn, msgno, update):
+                stack.append(msgno)
             else:
-                print('%d: Failed to download after %d attempts' % (msgno,
-                                                                    attempts))
+                print('Found a message that is already in the mbox.')
+                break
 
+        except:
+            traceback.print_exc()
+            pass
+
+    # actually retrieve the messages
+    length = len(stack)
+    count = 0
+
+    print("Retrieving %d messages." % length)
+
+    while stack:
+        count += 1
+        status = str(int(100 * count / length)) + ' %'
+        msgno = stack.pop()
+
+        try:
+            store(index, mbox, nntpconn, msgno)
         except:
             traceback.print_exc()
             pass
@@ -186,7 +227,6 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     if not dry_run:
         mbox.flush()
         mbox.unlock()
-        index.commit()
         index.close()
 
     nntpconn.quit()
