@@ -15,8 +15,10 @@ import argparse
 import email
 import mailbox
 import nntplib
-import sys
 import time
+import sqlite3
+import os.path
+import traceback
 
 
 status = '0 %'
@@ -37,11 +39,9 @@ def list_groups():
     nntpconn.quit()
 
 
-def contains(mbox, msgid):
-    for m in mbox.itervalues():
-        if m.get('Message-Id') == msgid:
-            return True
-    return False
+def contains(index, msgid):
+    return index.execute('SELECT * FROM messages WHERE msgid=?',
+                         (msgid,)).fetchone()
 
 
 def stat(nntpconn, msgno):
@@ -61,18 +61,44 @@ def get(nntpconn, msgno):
     return(info.number, info.message_id, email.message_from_string(text))
 
 
-def store(mbox, nntpconn, msgno, update):
+def store(index, mbox, nntpconn, msgno, update):
     if update:
         number, msgid = stat(nntpconn, msgno)
 
-    if not update or not contains(mbox, msgid):
+    if not update or not contains(index, msgid):
         number, msgid, msg = get(nntpconn, msgno)
         mbox.add(msg)
+        index_msg(index, msg)
         action = 'STORE'
     else:
         action = 'SKIP'
 
     log('mbox', action, number, msgno, msgid)
+
+
+def index_msg(index, msg):
+    msgid = msg.get('Message-Id')
+    date = msg.get('Date')
+    sender = msg.get('From')
+    subject = msg.get('Subject')
+
+    print("Indexing %s" % msgid)
+    index.execute('INSERT INTO messages VALUES(?,?,?,?)', (msgid, date, sender,
+                                                           subject))
+
+
+def initialize_index(indexfile, mbox):
+    print('Initialize index...')
+    index = sqlite3.connect(indexfile)
+
+    index.execute('''CREATE TABLE messages
+                  (msgid text, date text, sender text, subject text)''')
+
+    for m in mbox.itervalues():
+        index_msg(index, m)
+
+    index.commit()
+    return index
 
 
 def download(group, aggressive, dry_run, number=None, start=None, update=None):
@@ -92,6 +118,12 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     if not dry_run:
         mbox = mailbox.mbox(group + '.mbox')
         mbox.lock()
+        indexfile = group + '.db'
+
+        if not os.path.isfile(indexfile):
+            index = initialize_index(indexfile, mbox)
+        else:
+            index = sqlite3.connect(indexfile)
 
     nntpconn = nntplib.NNTP('news.gmane.org')
 
@@ -135,7 +167,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
 
             for attempt in range(attempts):
                 try:
-                    store(mbox, nntpconn, msgno, update)
+                    store(index, mbox, nntpconn, msgno, update)
                 except nntplib.NNTPTemporaryError:
                     print('%d: Temporary error. Sleep 5 seconds and retry.' %
                           msgno)
@@ -148,12 +180,14 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
                                                                     attempts))
 
         except:
-            print(sys.exc_info()[0])
+            traceback.print_exc()
             pass
 
     if not dry_run:
         mbox.flush()
         mbox.unlock()
+        index.commit()
+        index.close()
 
     nntpconn.quit()
 
@@ -200,6 +234,7 @@ def main():
                      args.start,
                      args.update)
         except:
+            traceback.print_exc()
             pass
 
 
