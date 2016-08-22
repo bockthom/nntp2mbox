@@ -88,7 +88,10 @@ def get(nntpconn, msgno):
 def check(index, mbox, nntpconn, msgno, update):
 
     if update:
-                number, msgid = stat(nntpconn, msgno)
+        number, msgid = stat(nntpconn, msgno)
+    else:
+        number = msgno
+        msgid = 'unknown msg-id'
 
     if not update or not contains(index, msgid):
         queue = True
