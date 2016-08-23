@@ -63,7 +63,7 @@ def stat(nntpconn, msgno):
     return number, msgid
 
 
-def get(nntpconn, msgno):
+def get(nntpconn, msgno, aggressive):
     for attempt in range(attempts):
         try:
             resp, info = nntpconn.article(str(msgno))
@@ -104,8 +104,8 @@ def check(index, mbox, nntpconn, msgno, update):
     return queue
 
 
-def store(index, mbox, nntpconn, msgno):
-    number, msgid, msg = get(nntpconn, msgno)
+def store(index, mbox, nntpconn, msgno, aggressive):
+    number, msgid, msg = get(nntpconn, msgno, aggressive)
     mbox.add(msg)
     index_msg(index, msg)
     index.commit()
@@ -222,7 +222,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
         msgno = stack.pop()
 
         try:
-            store(index, mbox, nntpconn, msgno)
+            store(index, mbox, nntpconn, msgno, aggressive)
         except:
             traceback.print_exc()
             pass
