@@ -57,7 +57,9 @@ def stat(nntpconn, msgno):
         else:
             break
     else:
-        print('%d: Failed to download after %d attempts' % (msgno, attempts))
+        print('%d: Failed to stat after %d attempts' % (msgno, attempts))
+        raise Exception('%d: Failed to stat after %d attempts'
+                        % (msgno, attempts))
 
     log('nntp', 'STAT', number, msgno, msgid)
     return number, msgid
@@ -76,6 +78,8 @@ def get(nntpconn, msgno, aggressive):
             break
     else:
         print('%d: Failed to download after %d attempts' % (msgno, attempts))
+        raise Exception('%d: Failed to download after %d attempts'
+                        % (msgno, attempts))
 
     text = str()
     for line in info.lines:
@@ -105,11 +109,15 @@ def check(index, mbox, nntpconn, msgno, update):
 
 
 def store(index, mbox, nntpconn, msgno, aggressive):
-    number, msgid, msg = get(nntpconn, msgno, aggressive)
-    mbox.add(msg)
-    index_msg(index, msg)
-    action = 'STORE'
-    log('mbox', action, number, msgno, msgid)
+    try:
+        number, msgid, msg = get(nntpconn, msgno, aggressive)
+        mbox.add(msg)
+        index_msg(index, msg)
+        action = 'STORE'
+        log('mbox', action, number, msgno, msgid)
+    except:
+        traceback.print_exc()
+        pass
 
 
 def index_msg(index, msg):
