@@ -108,7 +108,6 @@ def store(index, mbox, nntpconn, msgno, aggressive):
     number, msgid, msg = get(nntpconn, msgno, aggressive)
     mbox.add(msg)
     index_msg(index, msg)
-    index.commit()
     action = 'STORE'
     log('mbox', action, number, msgno, msgid)
 
@@ -227,9 +226,14 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
             traceback.print_exc()
             pass
 
+        if count % 1000 == 0:
+            mbox.flush()
+            index.commit()
+
     if not dry_run:
         mbox.flush()
         mbox.unlock()
+        index.commit()
         index.close()
 
     nntpconn.quit()
