@@ -83,7 +83,7 @@ def get(nntpconn, msgno, aggressive):
 
     text = str()
     for line in info.lines:
-        text += line.decode(encoding='UTF-8') + "\n"
+        text += (line.decode('ascii', 'ignore')) + "\n"
 
     log('nntp', 'GET', info.number, msgno, info.message_id)
     return(info.number, info.message_id, email.message_from_string(text))
