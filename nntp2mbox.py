@@ -45,7 +45,7 @@ def contains(index, msgid):
                          (msgid,)).fetchone()
 
 
-def stat(nntpconn, msgno):
+def stat(nntpconn, msgno, aggressive):
     for attempt in range(attempts):
         try:
             resp, number, msgid = nntpconn.stat(str(msgno))
@@ -89,10 +89,10 @@ def get(nntpconn, msgno, aggressive):
     return(info.number, info.message_id, email.message_from_string(text))
 
 
-def check(index, mbox, nntpconn, msgno, update):
+def check(index, mbox, nntpconn, msgno, update, aggressive):
 
     if update:
-        number, msgid = stat(nntpconn, msgno)
+        number, msgid = stat(nntpconn, msgno, aggressive)
     else:
         number = msgno
         msgid = 'unknown msg-id'
@@ -207,7 +207,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
 
             status = str(int(100 * (last - msgno) / (last - startnr))) + ' %'
 
-            if check(index, mbox, nntpconn, msgno, update):
+            if check(index, mbox, nntpconn, msgno, update, aggressive):
                 stack.append(msgno)
             else:
                 print('Found a message that is already in the mbox.')
