@@ -81,12 +81,9 @@ def get(nntpconn, msgno, aggressive):
         raise Exception('%d: Failed to download after %d attempts'
                         % (msgno, attempts))
 
-    text = str()
-    for line in info.lines:
-        text += (line.decode('ascii', 'ignore')) + "\n"
-
+    text = b'\r\n'.join(info.lines)
     log('nntp', 'GET', info.number, msgno, info.message_id)
-    return(info.number, info.message_id, email.message_from_string(text))
+    return(info.number, info.message_id, email.message_from_bytes(text))
 
 
 def check(index, mbox, nntpconn, msgno, update, aggressive):
