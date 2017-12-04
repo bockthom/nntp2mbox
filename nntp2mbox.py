@@ -45,52 +45,26 @@ def contains(index, msgid):
                          (msgid,)).fetchone()
 
 
-def stat(nntpconn, msgno, aggressive):
-    for attempt in range(attempts):
-        try:
-            resp, number, msgid = nntpconn.stat(str(msgno))
-        except nntplib.NNTPTemporaryError:
-            print('%d: Temporary error. Sleep 5 seconds and retry.' % msgno)
-            if not aggressive:
-                time.sleep(5)
-            pass
-        else:
-            break
-    else:
-        print('%d: Failed to stat after %d attempts' % (msgno, attempts))
-        raise Exception('%d: Failed to stat after %d attempts'
-                        % (msgno, attempts))
-
+def stat(nntpconn, msgno):
+    resp, number, msgid = nntpconn.stat(str(msgno))
     log('nntp', 'STAT', number, msgno, msgid)
     return number, msgid
 
 
-def get(nntpconn, msgno, aggressive):
-    for attempt in range(attempts):
-        try:
-            resp, info = nntpconn.article(str(msgno))
-        except nntplib.NNTPTemporaryError:
-            print('%d: Temporary error. Sleep 5 seconds and retry.' % msgno)
-            if not aggressive:
-                time.sleep(5)
-            pass
-        else:
-            break
-    else:
-        print('%d: Failed to download after %d attempts' % (msgno, attempts))
-        raise Exception('%d: Failed to download after %d attempts'
-                        % (msgno, attempts))
-
+def get(nntpconn, msgno):
+    resp, info = nntpconn.article(str(msgno))
     text = b'\r\n'.join(info.lines)
     log('nntp', 'GET', info.number, msgno, info.message_id)
     return(info.number, info.message_id, email.message_from_bytes(text))
 
 
-def check(index, mbox, nntpconn, msgno, update, aggressive):
+def check(index, mbox, nntpconn, msgno, update):
 
     if update:
-        number, msgid = stat(nntpconn, msgno, aggressive)
+        # Retrieve msgid to check whether we already have this msg
+        number, msgid = stat(nntpconn, msgno)
     else:
+        # Need to queue the msg anyway
         number = msgno
         msgid = 'unknown msg-id'
 
@@ -105,13 +79,15 @@ def check(index, mbox, nntpconn, msgno, update, aggressive):
     return queue
 
 
-def store(index, mbox, nntpconn, msgno, aggressive):
+def store(index, mbox, nntpconn, msgno):
     try:
-        number, msgid, msg = get(nntpconn, msgno, aggressive)
+        number, msgid, msg = get(nntpconn, msgno)
         mbox.add(msg)
         index_msg(index, msg)
         action = 'STORE'
         log('mbox', action, number, msgno, msgid)
+    except nntplib.NNTPTemporaryError:
+        pass
     except:
         traceback.print_exc()
         pass
@@ -204,12 +180,14 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
 
             status = str(int(100 * (last - msgno) / (last - startnr))) + ' %'
 
-            if check(index, mbox, nntpconn, msgno, update, aggressive):
+            if check(index, mbox, nntpconn, msgno, update):
                 stack.append(msgno)
             else:
                 print('Found a message that is already in the mbox.')
                 break
 
+        except nntplib.NNTPTemporaryError:
+            pass
         except:
             traceback.print_exc()
             pass
@@ -226,7 +204,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
         msgno = stack.pop()
 
         try:
-            store(index, mbox, nntpconn, msgno, aggressive)
+            store(index, mbox, nntpconn, msgno)
         except:
             traceback.print_exc()
             pass
