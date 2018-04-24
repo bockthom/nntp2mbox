@@ -168,6 +168,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     stack = []
 
     # Check which messages need to be retrieved
+    # TODO replace this by binary search
     for msgno in reversed(range(startnr, last + 1)):
         try:
             if not aggressive and (msgno % 1000 == 0) and (msgno != startnr):
