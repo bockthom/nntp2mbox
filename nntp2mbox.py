@@ -58,25 +58,9 @@ def get(nntpconn, msgno):
     return(info.number, info.message_id, email.message_from_bytes(text))
 
 
-def check(index, mbox, nntpconn, msgno, update):
-
-    if update:
-        # Retrieve msgid to check whether we already have this msg
-        number, msgid = stat(nntpconn, msgno)
-    else:
-        # Need to queue the msg anyway
-        number = msgno
-        msgid = 'unknown msg-id'
-
-    if not update or not contains(index, msgid):
-        queue = True
-        action = 'QUEUE'
-    else:
-        queue = False
-        action = 'SKIP'
-
-    log('mbox', action, number, msgno, msgid)
-    return queue
+def check(index, mbox, nntpconn, msgno):
+    number, msgid = stat(nntpconn, msgno)
+    return not contains(index, msgid)
 
 
 def store(index, mbox, nntpconn, msgno):
@@ -128,15 +112,14 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
 
     global status
 
-    if not dry_run:
-        mbox = mailbox.mbox(group + '.mbox')
-        mbox.lock()
-        indexfile = group + '.db'
+    mbox = mailbox.mbox(group + '.mbox')
+    mbox.lock()
+    indexfile = group + '.db'
 
-        if not os.path.isfile(indexfile):
-            index = initialize_index(indexfile, mbox)
-        else:
-            index = sqlite3.connect(indexfile)
+    if not os.path.isfile(indexfile):
+        index = initialize_index(indexfile, mbox)
+    else:
+        index = sqlite3.connect(indexfile)
 
     nntpconn = nntplib.NNTP('news.gmane.org')
 
@@ -152,57 +135,61 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
         startnr = min(startnr, last)
 
         if number:
-            last = min(startnr + number, last)
+            last = min(startnr + number - 1, last)
 
     else:
         startnr = first
-
-        if number:
-            startnr = max(startnr, last - number)
-
-    if not start:
         print('No start message provided, starting at %d' % startnr)
 
-    print("Checking messages %d to %d." % (startnr, last))
+        if number and not update:
+            startnr = max(startnr, last - number)
 
-    stack = []
+    if update:
+        print("Checking messages %d to %d whether they need to be retrieved."
+              % (startnr, last))
+        # Check which messages need to be retrieved
+        lo = startnr
+        hi = last
+        while lo < hi:
+            mid = (lo+hi)//2
+            try:
+                if check(index, mbox, nntpconn, mid):
+                    # msg is new
+                    hi = mid
+                else:
+                    # msg already in the mbox
+                    lo = mid+1
+            except nntplib.NNTPTemporaryError:
+                pass
+            except:
+                traceback.print_exc()
+                pass
 
-    # Check which messages need to be retrieved
-    # TODO replace this by binary search
-    for msgno in reversed(range(startnr, last + 1)):
-        try:
-            if not aggressive and (msgno % 1000 == 0) and (msgno != startnr):
-                print('%d: Sleep 30 seconds' % msgno)
-                time.sleep(30)
+        startnr = lo
+        if number:
+            last = min(startnr + number - 1, last)
 
-            if dry_run:
-                print('Dry-run: download message no. %d' % msgno)
-                continue
+    print("First to fetch: %d" % startnr)
+    print("Last to fetch: %d" % last)
 
-            status = str(int(100 * (last - msgno) / (last - startnr))) + ' %'
+    if dry_run:
+        mbox.flush()
+        mbox.unlock()
+        index.commit()
+        index.close()
+        return
 
-            if check(index, mbox, nntpconn, msgno, update):
-                stack.append(msgno)
-            else:
-                print('Found a message that is already in the mbox.')
-                break
-
-        except nntplib.NNTPTemporaryError:
-            pass
-        except:
-            traceback.print_exc()
-            pass
-
-    # actually retrieve the messages
-    length = len(stack)
+    length = last + 1 - startnr
     count = 0
-
     print("Retrieving %d messages." % length)
 
-    while stack:
+    for msgno in range(startnr, last + 1):
+        if dry_run:
+            print('Dry-run: download message no. %d' % msgno)
+            continue
+
         count += 1
         status = str(int(100 * count / length)) + ' %'
-        msgno = stack.pop()
 
         try:
             store(index, mbox, nntpconn, msgno)
@@ -213,12 +200,14 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
         if count % 1000 == 0:
             mbox.flush()
             index.commit()
+            if not aggressive and (msgno != startnr):
+                print('%d: Sleep 30 seconds' % msgno)
+                time.sleep(30)
 
-    if not dry_run:
-        mbox.flush()
-        mbox.unlock()
-        index.commit()
-        index.close()
+    mbox.flush()
+    mbox.unlock()
+    index.commit()
+    index.close()
 
     nntpconn.quit()
 
