@@ -80,8 +80,8 @@ def store(index, mbox, nntpconn, msgno):
 def index_msg(index, msg):
     msgid = msg.get('Message-Id')
     date = msg.get('Date')
-    sender = msg.get('From')
-    subject = msg.get('Subject')
+    sender = str(msg.get('From'))
+    subject = str(msg.get('Subject'))
     index.execute('INSERT INTO messages VALUES(?,?,?,?)', (msgid, date, sender,
                                                            subject))
 
