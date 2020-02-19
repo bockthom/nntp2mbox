@@ -31,7 +31,7 @@ def log(target, action, number, msgno, msgid):
 
 
 def list_groups():
-    nntpconn = nntplib.NNTP('news.gmane.org')
+    nntpconn = nntplib.NNTP('news.gmane.io')
     resp, lists = nntpconn.list()
 
     for group, last, first, flag in lists:
@@ -121,7 +121,7 @@ def download(group, aggressive, dry_run, number=None, start=None, update=None):
     else:
         index = sqlite3.connect(indexfile)
 
-    nntpconn = nntplib.NNTP('news.gmane.org')
+    nntpconn = nntplib.NNTP('news.gmane.io')
 
     resp, count, first, last, name = nntpconn.group(group)
     print(
